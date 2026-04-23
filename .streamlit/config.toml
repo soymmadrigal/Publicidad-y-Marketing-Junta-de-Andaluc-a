@@ -1,0 +1,16 @@
+[server]
+enableCORS = true
+enableXsrfProtection = true
+maxUploadSize = 20
+maxMessageSize = 200
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#087021"
+backgroundColor = "#F7FBF8"
+secondaryBackgroundColor = "#E9F4EC"
+textColor = "#123126"
