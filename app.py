@@ -47,21 +47,60 @@ def mask_nif(value: object) -> str:
     return f"{txt[:2]}***{txt[-1:]}"
 
 
+def _can_read_parquet() -> bool:
+    try:
+        import pyarrow  # noqa: F401
+        return True
+    except Exception:
+        try:
+            import duckdb  # noqa: F401
+            return True
+        except Exception:
+            return False
+
+
 def _resolve_input_file() -> Path:
-    if DATA_FILE_PREFERRED.exists():
-        return DATA_FILE_PREFERRED
+    # Cloud-safe: CSV first to avoid hard dependency on pyarrow wheels.
     if DATA_FILE_CSV_PRIMARY.exists():
         return DATA_FILE_CSV_PRIMARY
-    return DATA_FILE_CSV_FALLBACK
+    if DATA_FILE_CSV_FALLBACK.exists():
+        return DATA_FILE_CSV_FALLBACK
+    if DATA_FILE_PREFERRED.exists() and _can_read_parquet():
+        return DATA_FILE_PREFERRED
+    return DATA_FILE_CSV_PRIMARY
 
 
 @st.cache_data(show_spinner="Cargando datos de transparencia...", ttl=3600, max_entries=2)
 def load_data(path: Path) -> pd.DataFrame:
     last_error = None
     if path.suffix.lower() == ".parquet":
-        df = pd.read_parquet(path)
-        for col in df.columns:
-            df[col] = df[col].fillna("").astype(str).str.strip()
+        try:
+            df = pd.read_parquet(path)
+            for col in df.columns:
+                df[col] = df[col].fillna("").astype(str).str.strip()
+        except Exception as exc:
+            # Fallback 1: DuckDB (sin pyarrow)
+            try:
+                import duckdb
+                df = duckdb.sql(f"SELECT * FROM read_parquet('{path.as_posix()}')").df()
+                for col in df.columns:
+                    df[col] = df[col].fillna("").astype(str).str.strip()
+            except Exception:
+                # Fallback 2: CSV si existe
+                if DATA_FILE_CSV_PRIMARY.exists():
+                    path = DATA_FILE_CSV_PRIMARY
+                elif DATA_FILE_CSV_FALLBACK.exists():
+                    path = DATA_FILE_CSV_FALLBACK
+                else:
+                    raise RuntimeError(f"No se pudo leer parquet (pandas/duckdb) y no hay CSV fallback: {exc}")
+                for enc in ("utf-8-sig", "latin-1"):
+                    try:
+                        df = pd.read_csv(path, sep=";", dtype=str, encoding=enc, low_memory=False)
+                        break
+                    except Exception as inner_exc:  # pragma: no cover
+                        last_error = inner_exc
+                else:
+                    raise RuntimeError(f"No se pudo leer el CSV fallback: {last_error}")
     else:
         for enc in ("utf-8-sig", "latin-1"):
             try:
