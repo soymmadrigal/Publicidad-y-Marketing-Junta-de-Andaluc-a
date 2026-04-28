@@ -1,438 +1,589 @@
-from __future__ import annotations
-
-import re
-from pathlib import Path
-
+﻿import streamlit as st
 import pandas as pd
 import plotly.express as px
-import streamlit as st
 
 
-DATA_FILE_PREFERRED = Path("Andalucia_medios.parquet")
-DATA_FILE_CSV_PRIMARY = Path("Andalucia_medios.csv")
-DATA_FILE_CSV_FALLBACK = Path("Andalucia_publicidad.csv")
-OFFICIAL_SEARCH_URL = (
-    "https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/"
-    "pdc-front-publico/perfiles-licitaciones/buscador-general"
-)
-OFFICIAL_PORTAL_URL = "https://www.juntadeandalucia.es/temas/contratacion-publica/perfiles-licitaciones.html"
+SOURCE_FILE = "Andalucia_cpv.csv"
+PORTAL_URL = "https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/pdc-front-publico/perfiles-licitaciones/buscador-general"
+
+GREEN = "#007A3D"
+GREEN_DARK = "#00582C"
+GREEN_SOFT = "#EAF6EF"
+GOLD = "#D6A419"
+INK = "#123125"
+MUTED = "#60756B"
 
 
 st.set_page_config(
-    page_title="Andalucía Transparencia | Publicidad y Patrocinios",
-    page_icon="📊",
+    page_title="Andalucia | Contratacion de publicidad y medios",
+    page_icon="A",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 
-def parse_money(value: object) -> float:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return 0.0
-    txt = str(value).strip()
-    if not txt:
-        return 0.0
-    txt = txt.replace("€", "").replace(" ", "").replace(".", "").replace(",", ".")
-    return float(txt) if txt else 0.0
+st.markdown(
+    f"""
+    <style>
+    :root {{
+        --andalucia-green: {GREEN};
+        --andalucia-green-dark: {GREEN_DARK};
+        --andalucia-green-soft: {GREEN_SOFT};
+        --andalucia-gold: {GOLD};
+        --andalucia-ink: {INK};
+        --andalucia-muted: {MUTED};
+    }}
+
+    .stApp {{
+        background:
+            linear-gradient(180deg, #f7fbf8 0%, #ffffff 36%, #f3f8f5 100%);
+        color: var(--andalucia-ink);
+    }}
+
+    section[data-testid="stSidebar"] {{
+        background: #ffffff;
+        border-right: 1px solid #d8e7df;
+    }}
+
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h1,
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2,
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 {{
+        color: var(--andalucia-green-dark);
+    }}
+
+    h1, h2, h3 {{
+        color: var(--andalucia-ink);
+        letter-spacing: 0;
+    }}
+
+    hr {{
+        border: 0;
+        border-top: 1px solid #d8e7df;
+        margin: 1.2rem 0;
+    }}
+
+    .hero {{
+        border-left: 8px solid var(--andalucia-green);
+        padding: 0.35rem 0 0.35rem 1rem;
+        margin: 0.4rem 0 1.2rem 0;
+    }}
+
+    .hero .eyebrow {{
+        color: var(--andalucia-green-dark);
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+    }}
+
+    .hero .subtitle {{
+        color: var(--andalucia-muted);
+        font-size: 1rem;
+        max-width: 980px;
+    }}
+
+    .kpi-grid {{
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.85rem;
+        margin: 0.4rem 0 1.1rem 0;
+    }}
+
+    .kpi-card {{
+        background: #ffffff;
+        border: 1px solid #d8e7df;
+        border-top: 4px solid var(--andalucia-green);
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 10px 24px rgba(0, 88, 44, 0.08);
+        min-height: 112px;
+    }}
+
+    .kpi-label {{
+        color: var(--andalucia-muted);
+        font-size: 0.84rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }}
+
+    .kpi-value {{
+        color: var(--andalucia-green-dark);
+        font-size: 1.55rem;
+        font-weight: 800;
+        line-height: 1.2;
+        margin-top: 0.45rem;
+        overflow-wrap: anywhere;
+    }}
+
+    .kpi-note {{
+        color: var(--andalucia-muted);
+        font-size: 0.82rem;
+        margin-top: 0.35rem;
+    }}
+
+    .source-box {{
+        background: #ffffff;
+        border: 1px solid #d8e7df;
+        border-left: 5px solid var(--andalucia-gold);
+        border-radius: 8px;
+        padding: 0.9rem 1rem;
+        color: var(--andalucia-ink);
+    }}
+
+    .source-box a {{
+        color: var(--andalucia-green-dark);
+        font-weight: 700;
+        text-decoration: none;
+    }}
+
+    .source-box a:hover {{
+        text-decoration: underline;
+    }}
+
+    div[data-testid="stDataFrame"] {{
+        border: 1px solid #d8e7df;
+        border-radius: 8px;
+        overflow: hidden;
+    }}
+
+    .stDownloadButton button,
+    .stButton button {{
+        background: var(--andalucia-green);
+        color: #ffffff;
+        border: 1px solid var(--andalucia-green-dark);
+        border-radius: 6px;
+        font-weight: 700;
+    }}
+
+    @media (max-width: 980px) {{
+        .kpi-grid {{
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }}
+    }}
+
+    @media (max-width: 640px) {{
+        .kpi-grid {{
+            grid-template-columns: 1fr;
+        }}
+        .kpi-value {{
+            font-size: 1.35rem;
+        }}
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
-def fmt_eur(value: float) -> str:
-    return f"{value:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+def fmt_eur(value):
+    if pd.isna(value):
+        value = 0
+    text = f"{float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{text} EUR"
 
 
-def mask_nif(value: object) -> str:
-    txt = "" if value is None else str(value).strip()
-    if len(txt) <= 3:
-        return txt
-    return f"{txt[:2]}***{txt[-1:]}"
+def fmt_int(value):
+    return f"{int(value):,}".replace(",", ".")
 
 
-def _can_read_parquet() -> bool:
-    try:
-        import pyarrow  # noqa: F401
-        return True
-    except Exception:
-        try:
-            import duckdb  # noqa: F401
-            return True
-        except Exception:
-            return False
+def parse_money(series):
+    return pd.to_numeric(
+        series.astype(str)
+        .str.replace("EUR", "", regex=False)
+        .str.replace("â‚¬", "", regex=False)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.strip(),
+        errors="coerce",
+    ).fillna(0)
 
 
-def _resolve_input_file() -> Path:
-    # Cloud-safe: CSV first to avoid hard dependency on pyarrow wheels.
-    if DATA_FILE_CSV_PRIMARY.exists():
-        return DATA_FILE_CSV_PRIMARY
-    if DATA_FILE_CSV_FALLBACK.exists():
-        return DATA_FILE_CSV_FALLBACK
-    if DATA_FILE_PREFERRED.exists() and _can_read_parquet():
-        return DATA_FILE_PREFERRED
-    return DATA_FILE_CSV_PRIMARY
+def clean_text(series, default="Sin especificar"):
+    return (
+        series.fillna(default)
+        .astype(str)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
+        .replace({"": default, "nan": default, "None": default})
+    )
 
 
-@st.cache_data(show_spinner="Cargando datos de transparencia...", ttl=3600, max_entries=2)
-def load_data(path: Path) -> pd.DataFrame:
-    last_error = None
-    if path.suffix.lower() == ".parquet":
-        try:
-            df = pd.read_parquet(path)
-            for col in df.columns:
-                df[col] = df[col].fillna("").astype(str).str.strip()
-        except Exception as exc:
-            # Fallback 1: DuckDB (sin pyarrow)
-            try:
-                import duckdb
-                df = duckdb.sql(f"SELECT * FROM read_parquet('{path.as_posix()}')").df()
-                for col in df.columns:
-                    df[col] = df[col].fillna("").astype(str).str.strip()
-            except Exception:
-                # Fallback 2: CSV si existe
-                if DATA_FILE_CSV_PRIMARY.exists():
-                    path = DATA_FILE_CSV_PRIMARY
-                elif DATA_FILE_CSV_FALLBACK.exists():
-                    path = DATA_FILE_CSV_FALLBACK
-                else:
-                    raise RuntimeError(f"No se pudo leer parquet (pandas/duckdb) y no hay CSV fallback: {exc}")
-                for enc in ("utf-8-sig", "latin-1"):
-                    try:
-                        df = pd.read_csv(path, sep=";", dtype=str, encoding=enc, low_memory=False)
-                        break
-                    except Exception as inner_exc:  # pragma: no cover
-                        last_error = inner_exc
-                else:
-                    raise RuntimeError(f"No se pudo leer el CSV fallback: {last_error}")
-    else:
-        for enc in ("utf-8-sig", "latin-1"):
-            try:
-                df = pd.read_csv(path, sep=";", dtype=str, encoding=enc, low_memory=False)
-                break
-            except Exception as exc:  # pragma: no cover
-                last_error = exc
-        else:
-            raise RuntimeError(f"No se pudo leer el CSV: {last_error}")
+@st.cache_data(show_spinner="Cargando contratos de publicidad y medios de Andalucia...")
+def load_data():
+    df = pd.read_csv(SOURCE_FILE, sep=";", dtype=str, encoding="utf-8")
 
-    df.columns = [c.strip() for c in df.columns]
-    for col in df.columns:
-        df[col] = df[col].fillna("").astype(str).str.strip()
-
-    required_cols = [
-        "detalle_importe_adjudicacion_sin_iva",
-        "detalle_importe_adjudicacion_con_iva",
-        "detalle_fecha_adjudicacion",
-        "detalle_numero_expediente",
-        "detalle_titulo_expediente",
-        "detalle_organo_contratacion",
-        "detalle_tipo_contrato",
-        "detalle_estado_formalizado",
-        "detalle_lugar_ejecucion",
-        "detalle_persona_adjudicataria",
-        "detalle_nif_adjudicatario",
+    text_columns = [
+        "tipoRegistro",
+        "numeroExpediente",
+        "titulo",
+        "urlDetalle",
+        "estado",
+        "tipoContrato",
+        "procedimiento",
+        "perfilContratante",
+        "adjudicatarios",
+        "adjudicatario_normalizado",
+        "nif_normalizado",
+        "cpv",
+        "provinciasEjecucion",
+        "origen",
     ]
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        raise RuntimeError(f"Faltan columnas requeridas en el dataset: {', '.join(missing)}")
-
-    numeric_cols = [
-        "detalle_importe_licitacion_sin_iva",
-        "detalle_importe_licitacion_con_iva",
-        "detalle_valor_estimado",
-        "detalle_importe_adjudicacion_sin_iva",
-        "detalle_importe_adjudicacion_con_iva",
-        "detalle_num_licitadores",
-    ]
-    for col in numeric_cols:
+    for col in text_columns:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+            df[col] = clean_text(df[col])
 
-    if "Importe licitación" in df.columns:
-        df["importe_licitacion_tabla"] = df["Importe licitación"].map(parse_money)
+    if "adjudicatario_normalizado" in df.columns:
+        df["empresa"] = clean_text(df["adjudicatario_normalizado"])
     else:
-        df["importe_licitacion_tabla"] = 0.0
+        df["empresa"] = clean_text(df["adjudicatarios"])
 
-    if "Importe adjudicación" in df.columns:
-        df["importe_adjudicacion_tabla"] = df["Importe adjudicación"].map(parse_money)
+    if "nif_normalizado" in df.columns:
+        df["nif_empresa"] = clean_text(df["nif_normalizado"], "")
     else:
-        df["importe_adjudicacion_tabla"] = 0.0
+        df["nif_empresa"] = clean_text(df.get("nifAdjudicatarios", pd.Series("", index=df.index)), "")
 
-    date_cols = [
-        "detalle_fecha_formalizacion",
-        "detalle_fecha_adjudicacion",
-    ]
-    for col in date_cols:
+    for col in [
+        "importeLicitacion",
+        "importeLicitacionConIva",
+        "valorEstimado",
+        "importeFormalizacion",
+        "importeFormalizacionConIva",
+        "importeFormalizado",
+        "importeFormalizadoConIva",
+        "importeAdjudicacion",
+        "importeAdjudicacionConIva",
+    ]:
         if col in df.columns:
-            df[col + "_dt"] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
-        else:
-            df[col + "_dt"] = pd.NaT
+            df[col] = parse_money(df[col])
 
-    if "detalle_fecha_adjudicacion_dt" in df.columns:
-        df["anio_adjudicacion"] = (
-            df["detalle_fecha_adjudicacion_dt"].dt.year.fillna(0).astype(int).replace({0: pd.NA})
-        )
-    else:
-        df["anio_adjudicacion"] = pd.NA
+    for col in [
+        "fechaPublicacion",
+        "fechaLimitePresentacion",
+        "fechaResolucionAdjudicacion",
+        "fechaFormalizacion",
+    ]:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True).dt.tz_convert(None)
 
-    df["expediente"] = df.get("detalle_numero_expediente", "")
-    df["titulo"] = df.get("detalle_titulo_expediente", "")
-    df["organo"] = df.get("detalle_organo_contratacion", df.get("Órgano de contratación", ""))
-    df["tipo_contrato"] = df.get("detalle_tipo_contrato", df.get("Tipo de contrato", ""))
-    df["estado_expediente"] = df.get("detalle_estado_formalizado", df.get("Estado", ""))
-    df["provincia"] = df.get("detalle_lugar_ejecucion", "")
+    df["anio"] = df["fechaPublicacion"].dt.year.fillna(0).astype(int)
+    df["mes"] = df["fechaPublicacion"].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
+    importe_formalizado = pd.Series(0, index=df.index, dtype="float64")
+    importe_formalizado_iva = pd.Series(0, index=df.index, dtype="float64")
+    for col in ["importeFormalizacion", "importeFormalizado"]:
+        if col in df.columns:
+            importe_formalizado = importe_formalizado.where(importe_formalizado > 0, df[col])
+    for col in ["importeFormalizacionConIva", "importeFormalizadoConIva"]:
+        if col in df.columns:
+            importe_formalizado_iva = importe_formalizado_iva.where(importe_formalizado_iva > 0, df[col])
 
-    df["adjudicataria_original"] = df.get("detalle_persona_adjudicataria", "")
-    if "Adjudicatario" in df.columns:
-        df["adjudicataria_normalizada"] = df["Adjudicatario"].astype(str).str.strip()
-    else:
-        df["adjudicataria_normalizada"] = df["adjudicataria_original"]
-    df["adjudicataria_normalizada"] = df["adjudicataria_normalizada"].replace({"": "Sin especificar"})
+    df["importe_base"] = importe_formalizado.where(
+        importe_formalizado > 0,
+        df["importeAdjudicacion"].where(df["importeAdjudicacion"] > 0, df["importeLicitacion"]),
+    )
+    df["importe_con_iva_base"] = importe_formalizado_iva.where(
+        importe_formalizado_iva > 0,
+        df["importeAdjudicacionConIva"].where(df["importeAdjudicacionConIva"] > 0, df["importeLicitacionConIva"]),
+    )
+    df["tipo_importe_mostrado"] = "Licitacion"
+    df.loc[df["importeAdjudicacion"] > 0, "tipo_importe_mostrado"] = "Adjudicacion"
+    df.loc[importe_formalizado > 0, "tipo_importe_mostrado"] = "Formalizacion"
 
-    df["nif_masked"] = df.get("detalle_nif_adjudicatario", "").map(mask_nif)
-
-    cat_cols = ["tipo_contrato", "estado_expediente", "provincia", "organo", "adjudicataria_normalizada"]
-    for col in cat_cols:
-        df[col] = df[col].replace({"": "Sin especificar"})
+    df["cpv_codigo"] = df["cpv"].str.extract(r"^([0-9]{2,8}(?:-[0-9])?)", expand=False).fillna("Sin CPV")
+    df["cpv_descripcion"] = df["cpv"].str.replace(r"^[0-9]{2,8}(?:-[0-9])?\s*", "", regex=True)
+    df["cpv_descripcion"] = clean_text(df["cpv_descripcion"], "Sin descripcion")
 
     return df
 
 
-def filter_text(text: str) -> str:
-    safe = re.sub(r"[^0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ .,_:/()\\-]", "", text or "")
-    return safe[:120].strip()
-
-
-DATA_FILE = _resolve_input_file()
-if not DATA_FILE.exists():
-    st.error(
-        "No se encuentra el fichero de datos. Se buscó en: "
-        f"{DATA_FILE_PREFERRED.resolve()}, {DATA_FILE_CSV_PRIMARY.resolve()} y {DATA_FILE_CSV_FALLBACK.resolve()}"
-    )
-    st.stop()
-
-df_raw = load_data(DATA_FILE)
-
-st.title("Andalucía Transparente: Publicidad Institucional")
-st.caption("Panel ciudadano de contratación pública y patrocinios con enfoque de rendición de cuentas.")
-
-st.info(
-    "Descargo legal: esta app es una visualización no oficial para facilitar análisis público. "
-    "Para datos oficiales y actualizados, consulta directamente la Junta de Andalucía: "
-    f"[Buscador oficial]({OFFICIAL_SEARCH_URL}) · [Portal oficial]({OFFICIAL_PORTAL_URL})."
-)
-
-with st.sidebar:
-    st.markdown("### Junta de Andalucía")
-    st.caption("Ejercicio de transparencia con datos abiertos de contratación pública.")
-    st.header("Filtros")
-    search_text = filter_text(st.text_input("Buscar texto (expediente, título, órgano, adjudicataria)", ""))
-
-    years_available = sorted([int(x) for x in df_raw["anio_adjudicacion"].dropna().unique().tolist()], reverse=True)
-    selected_years = st.multiselect("Año de adjudicación", years_available, default=years_available)
-
-    tipos = sorted(df_raw["tipo_contrato"].dropna().unique().tolist())
-    selected_tipos = st.multiselect("Tipo de contrato", tipos, default=tipos)
-
-    estados = sorted(df_raw["estado_expediente"].dropna().unique().tolist())
-    selected_estados = st.multiselect("Estado", estados, default=estados)
-
-    provincias = sorted(df_raw["provincia"].dropna().unique().tolist())
-    selected_provincias = st.multiselect("Provincia", provincias, default=provincias)
-
-    adj_top = (
-        df_raw["adjudicataria_normalizada"]
-        .value_counts()
-        .head(60)
-        .index
-        .tolist()
-    )
-    selected_adj = st.multiselect("Adjudicataria (normalizada)", adj_top, default=[])
-
-    include_errors = st.checkbox("Incluir registros con error de detalle", value=False)
-    max_rows = st.slider("Filas máximas en tabla", min_value=100, max_value=5000, value=1000, step=100)
-
-df = df_raw.copy()
-
-if selected_years:
-    df = df[df["anio_adjudicacion"].isin(selected_years)]
-if selected_tipos:
-    df = df[df["tipo_contrato"].isin(selected_tipos)]
-if selected_estados:
-    df = df[df["estado_expediente"].isin(selected_estados)]
-if selected_provincias:
-    df = df[df["provincia"].isin(selected_provincias)]
-if selected_adj:
-    df = df[df["adjudicataria_normalizada"].isin(selected_adj)]
-if not include_errors and "detalle_error" in df.columns:
-    df = df[df["detalle_error"].eq("")]
-
-if search_text:
-    idx = (
-        df["expediente"].str.contains(search_text, case=False, na=False)
-        | df["titulo"].str.contains(search_text, case=False, na=False)
-        | df["organo"].str.contains(search_text, case=False, na=False)
-        | df["adjudicataria_normalizada"].str.contains(search_text, case=False, na=False)
-        | df.get("detalle_persona_adjudicataria", "").str.contains(search_text, case=False, na=False)
-    )
-    df = df[idx]
-
-total_sin_iva = float(df["detalle_importe_adjudicacion_sin_iva"].sum())
-total_con_iva = float(df["detalle_importe_adjudicacion_con_iva"].sum())
-total_expedientes = int(len(df))
-total_organos = int(df["organo"].nunique())
-
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Expedientes", f"{total_expedientes:,}".replace(",", "."))
-k2.metric("Adjudicación sin IVA", fmt_eur(total_sin_iva))
-k3.metric("Adjudicación con IVA", fmt_eur(total_con_iva))
-k4.metric("Órganos distintos", f"{total_organos:,}".replace(",", "."))
-
-tab1, tab2, tab3 = st.tabs(["Resumen", "Explorador", "Datos y legal"])
-
-with tab1:
-    c1, c2 = st.columns(2)
-
-    with c1:
-        by_year = (
-            df.dropna(subset=["anio_adjudicacion"])
-            .groupby("anio_adjudicacion", as_index=False)["detalle_importe_adjudicacion_sin_iva"]
-            .sum()
-            .sort_values("anio_adjudicacion")
-        )
-        if not by_year.empty:
-            by_year["importe_fmt"] = by_year["detalle_importe_adjudicacion_sin_iva"].map(fmt_eur)
-            fig_year = px.bar(
-                by_year,
-                x="anio_adjudicacion",
-                y="detalle_importe_adjudicacion_sin_iva",
-                text="importe_fmt",
-                title="Inversión adjudicada sin IVA por año",
-                template="plotly_white",
-                color="detalle_importe_adjudicacion_sin_iva",
-                color_continuous_scale="Blues",
-            )
-            fig_year.update_layout(xaxis_title="", yaxis_title="")
-            fig_year.update_traces(textposition="outside", cliponaxis=False)
-            st.plotly_chart(fig_year, use_container_width=True)
-        else:
-            st.warning("No hay datos para el gráfico anual con los filtros actuales.")
-
-    with c2:
-        by_tipo = (
-            df.groupby("tipo_contrato", as_index=False)["detalle_importe_adjudicacion_sin_iva"]
-            .sum()
-            .sort_values("detalle_importe_adjudicacion_sin_iva", ascending=False)
-        )
-        if not by_tipo.empty:
-            fig_tipo = px.pie(
-                by_tipo,
-                names="tipo_contrato",
-                values="detalle_importe_adjudicacion_sin_iva",
-                title="Distribución por tipo de contrato",
-                hole=0.45,
-                template="plotly_white",
-            )
-            st.plotly_chart(fig_tipo, use_container_width=True)
-        else:
-            st.warning("No hay datos por tipo de contrato.")
-
-    top_org = (
-        df.groupby("organo", as_index=False)["detalle_importe_adjudicacion_sin_iva"]
+def top_table(df, group_col, value_col="importe_base", n=12):
+    return (
+        df.groupby(group_col, dropna=False)[value_col]
         .sum()
-        .sort_values("detalle_importe_adjudicacion_sin_iva", ascending=False)
-        .head(15)
+        .sort_values(ascending=False)
+        .head(n)
+        .reset_index()
     )
-    if not top_org.empty:
-        top_org["importe_fmt"] = top_org["detalle_importe_adjudicacion_sin_iva"].map(fmt_eur)
-        fig_org = px.bar(
-            top_org,
-            x="detalle_importe_adjudicacion_sin_iva",
-            y="organo",
-            text="importe_fmt",
-            orientation="h",
-            title="Top 15 órganos por adjudicación sin IVA",
-            template="plotly_white",
-            color="detalle_importe_adjudicacion_sin_iva",
-            color_continuous_scale="Tealgrn",
-        )
-        fig_org.update_layout(xaxis_title="", yaxis_title="")
-        fig_org.update_traces(textposition="outside", cliponaxis=False)
-        st.plotly_chart(fig_org, use_container_width=True)
 
-    top_adj = (
-        df.groupby("adjudicataria_normalizada", as_index=False)["detalle_importe_adjudicacion_sin_iva"]
-        .sum()
-        .sort_values("detalle_importe_adjudicacion_sin_iva", ascending=False)
-        .head(15)
+
+def short_label(value, max_chars=64):
+    text = str(value)
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "..."
+
+
+def bar_chart(data, x, y, orientation="h", color=GREEN, height=420, left_margin=8, hover_col=None):
+    fig = px.bar(data, x=x, y=y, orientation=orientation, text=data[x if orientation == "h" else y].apply(fmt_eur))
+    hovertemplate = "%{y}<br>%{x:,.2f} EUR<extra></extra>" if orientation == "h" else "%{x}<br>%{y:,.2f} EUR<extra></extra>"
+    if hover_col and hover_col in data.columns:
+        fig.update_traces(customdata=data[[hover_col]], hovertemplate="%{customdata[0]}<br>%{x:,.2f} EUR<extra></extra>")
+    else:
+        fig.update_traces(hovertemplate=hovertemplate)
+    fig.update_traces(marker_color=color, textposition="outside", cliponaxis=False)
+    fig.update_layout(
+        height=height,
+        margin=dict(l=left_margin, r=80, t=20, b=30),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=INK, size=12),
+        xaxis_title="",
+        yaxis_title="",
+        xaxis=dict(gridcolor="#e1ede6", tickformat=",.0f"),
+        yaxis=dict(categoryorder="total ascending"),
+        showlegend=False,
     )
-    if not top_adj.empty:
-        top_adj["importe_fmt"] = top_adj["detalle_importe_adjudicacion_sin_iva"].map(fmt_eur)
-        fig_adj = px.bar(
-            top_adj,
-            x="detalle_importe_adjudicacion_sin_iva",
-            y="adjudicataria_normalizada",
-            text="importe_fmt",
-            orientation="h",
-            title="Top 15 adjudicatarias (nombre normalizado)",
-            template="plotly_white",
-            color="detalle_importe_adjudicacion_sin_iva",
-            color_continuous_scale="Viridis",
-        )
-        fig_adj.update_layout(xaxis_title="", yaxis_title="")
-        fig_adj.update_traces(textposition="outside", cliponaxis=False)
-        st.plotly_chart(fig_adj, use_container_width=True)
+    return fig
 
-with tab2:
-    st.subheader("Tabla de expedientes")
-    show_cols = [
-        "expediente",
-        "titulo",
-        "organo",
-        "tipo_contrato",
-        "estado_expediente",
-        "provincia",
-        "detalle_importe_adjudicacion_sin_iva",
-        "detalle_importe_adjudicacion_con_iva",
-        "detalle_fecha_adjudicacion",
-        "adjudicataria_normalizada",
-        "adjudicataria_original",
-        "nif_masked",
-        "detalle_persona_adjudicataria",
-        "URL detalle",
-    ]
-    safe_cols = [c for c in show_cols if c in df.columns]
-    view = df[safe_cols].copy()
-    view = view.sort_values("detalle_importe_adjudicacion_sin_iva", ascending=False).head(max_rows)
+
+def detail_grid(source_df, key):
+    st.subheader("Detalle de expedientes")
+    table = source_df[
+        [
+            "numeroExpediente",
+            "titulo",
+            "perfilContratante",
+            "tipoContrato",
+            "procedimiento",
+            "estado",
+            "provinciasEjecucion",
+            "importe_base",
+            "importe_con_iva_base",
+            "tipo_importe_mostrado",
+            "fechaPublicacion",
+            "empresa",
+            "nif_empresa",
+            "adjudicatarios",
+            "urlDetalle",
+        ]
+    ].copy()
+    table = table.rename(
+        columns={
+            "numeroExpediente": "Expediente",
+            "titulo": "Titulo",
+            "perfilContratante": "Organo",
+            "tipoContrato": "Tipo",
+            "procedimiento": "Procedimiento",
+            "estado": "Estado",
+            "provinciasEjecucion": "Localizacion",
+            "importe_base": "Importe base",
+            "importe_con_iva_base": "Importe con IVA",
+            "tipo_importe_mostrado": "Tipo importe",
+            "fechaPublicacion": "Fecha publicacion",
+            "empresa": "Empresa normalizada",
+            "nif_empresa": "NIF normalizado",
+            "adjudicatarios": "Adjudicatario original",
+            "urlDetalle": "Detalle oficial",
+        }
+    )
+    table = table.sort_values("Fecha publicacion", ascending=False)
+    table["Importe base"] = table["Importe base"].apply(fmt_eur)
+    table["Importe con IVA"] = table["Importe con IVA"].apply(fmt_eur)
+    table["Fecha publicacion"] = pd.to_datetime(table["Fecha publicacion"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 
     st.dataframe(
-        view,
-        use_container_width=True,
+        table,
+        width="stretch",
         hide_index=True,
+        height=520,
         column_config={
-            "detalle_importe_adjudicacion_sin_iva": st.column_config.NumberColumn(format="%.2f €"),
-            "detalle_importe_adjudicacion_con_iva": st.column_config.NumberColumn(format="%.2f €"),
-            "URL detalle": st.column_config.LinkColumn(display_text="Abrir detalle"),
+            "Detalle oficial": st.column_config.LinkColumn("Detalle oficial", display_text="Abrir"),
         },
+        key=key,
     )
 
-with tab3:
-    st.subheader("Descargas")
-    export_df = df.copy()
-    csv_bytes = export_df.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
-    st.download_button(
-        label="Descargar datos filtrados (CSV)",
-        data=csv_bytes,
-        file_name="andalucia_publicidad_filtrado.csv",
-        mime="text/csv",
-        use_container_width=True,
+
+def annual_bar_chart(data, x, y):
+    fig = px.bar(data, x=x, y=y, text=data[y].apply(fmt_eur))
+    fig.update_traces(
+        marker_color=GREEN,
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate="%{x}<br>%{y:,.2f} EUR<extra></extra>",
+    )
+    fig.update_layout(
+        height=360,
+        margin=dict(l=8, r=20, t=20, b=35),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=INK, size=12),
+        xaxis_title="",
+        yaxis_title="",
+        yaxis=dict(gridcolor="#e1ede6", tickformat=",.0f"),
+        showlegend=False,
+    )
+    return fig
+
+
+df_raw = load_data()
+
+st.sidebar.title("Filtros")
+years = sorted([year for year in df_raw["anio"].unique().tolist() if year > 0], reverse=True)
+sel_years = st.sidebar.multiselect("Ejercicio", years, default=years)
+sel_origin = st.sidebar.multiselect("Origen", sorted(df_raw["origen"].unique()), default=sorted(df_raw["origen"].unique()))
+sel_type = st.sidebar.multiselect("Tipo de contrato", sorted(df_raw["tipoContrato"].unique()))
+sel_status = st.sidebar.multiselect("Estado", sorted(df_raw["estado"].unique()))
+sel_province = st.sidebar.multiselect("Provincia / lugar ejecucion", sorted(df_raw["provinciasEjecucion"].unique()))
+sel_org = st.sidebar.selectbox("Organo de contratacion", ["Todos"] + sorted(df_raw["perfilContratante"].unique().tolist()))
+company_options = sorted(df_raw.loc[df_raw["empresa"] != "Sin especificar", "empresa"].unique().tolist())
+sel_company = st.sidebar.selectbox("Empresa adjudicataria", ["Todas"] + company_options)
+query = st.sidebar.text_input("Buscar en titulo, organo o empresa")
+
+df = df_raw.copy()
+if sel_years:
+    df = df[df["anio"].isin(sel_years)]
+if sel_origin:
+    df = df[df["origen"].isin(sel_origin)]
+if sel_type:
+    df = df[df["tipoContrato"].isin(sel_type)]
+if sel_status:
+    df = df[df["estado"].isin(sel_status)]
+if sel_province:
+    df = df[df["provinciasEjecucion"].isin(sel_province)]
+if sel_org != "Todos":
+    df = df[df["perfilContratante"] == sel_org]
+if sel_company != "Todas":
+    df = df[df["empresa"] == sel_company]
+if query:
+    q = query.strip().casefold()
+    mask = (
+        df["titulo"].str.casefold().str.contains(q, na=False)
+        | df["perfilContratante"].str.casefold().str.contains(q, na=False)
+        | df["empresa"].str.casefold().str.contains(q, na=False)
+        | df["adjudicatarios"].str.casefold().str.contains(q, na=False)
+        | df["nif_empresa"].str.casefold().str.contains(q, na=False)
+    )
+    df = df[mask]
+
+st.markdown(
+    """
+    <div class="hero">
+        <div class="eyebrow">Junta de Andalucia</div>
+        <h1>Contratacion de publicidad, comunicacion y medios</h1>
+        <div class="subtitle">
+            Panel de seguimiento de expedientes publicados en la Plataforma de Contratacion de la Comunidad Autonoma.
+            Importes mostrados en EUR con separador de miles.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+total_base = df["importe_base"].sum()
+total_iva = df["importe_con_iva_base"].sum()
+avg_contract = df["importe_base"].mean() if len(df) else 0
+formalizados = int(df["estado"].str.contains("resuelto|formalizado|adjudicado", case=False, na=False).sum())
+
+st.markdown(
+    f"""
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-label">Importe formalizado / adjudicado / licitado</div>
+            <div class="kpi-value">{fmt_eur(total_base)}</div>
+            <div class="kpi-note">Mejor importe disponible sin IVA</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Total con impuestos</div>
+            <div class="kpi-value">{fmt_eur(total_iva)}</div>
+            <div class="kpi-note">Formalizacion, adjudicacion o licitacion con IVA</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Expedientes</div>
+            <div class="kpi-value">{fmt_int(len(df))}</div>
+            <div class="kpi-note">{fmt_int(formalizados)} con estado resuelto/adjudicado</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Importe medio</div>
+            <div class="kpi-value">{fmt_eur(avg_contract)}</div>
+            <div class="kpi-note">Media sobre expedientes filtrados</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+tab_overview, tab_entities, tab_records = st.tabs(["Dashboard", "Organos y adjudicatarios", "Expedientes"])
+
+with tab_overview:
+    col1, col2 = st.columns([1.15, 0.85])
+    with col1:
+        st.subheader("Evolucion por ejercicio")
+        by_year = df[df["anio"] > 0].groupby("anio")["importe_base"].sum().reset_index()
+        st.plotly_chart(annual_bar_chart(by_year, "anio", "importe_base"), width="stretch")
+
+    with col2:
+        st.subheader("Top Localizaciones")
+        province = top_table(df, "provinciasEjecucion", n=10)
+        st.plotly_chart(bar_chart(province, "importe_base", "provinciasEjecucion", color=GREEN_DARK), width="stretch")
+
+    st.subheader("Empresas con mayor importe")
+    companies = top_table(df[df["empresa"] != "Sin especificar"], "empresa", n=12)
+    companies["empresa_etiqueta"] = companies["empresa"].apply(lambda value: short_label(value, 72))
+    st.plotly_chart(
+        bar_chart(
+            companies,
+            "importe_base",
+            "empresa_etiqueta",
+            color=GREEN,
+            height=520,
+            left_margin=20,
+            hover_col="empresa",
+        ),
+        width="stretch",
     )
 
-    st.markdown("### Seguridad y buen uso")
-    st.markdown(
-        "- El panel no ejecuta HTML/JS arbitrario ni código de usuario.\n"
-        "- Búsqueda sanitizada y limitada en longitud para evitar abusos.\n"
-        "- NIF mostrado en formato enmascarado para minimizar exposición directa.\n"
-        "- Normalización de adjudicatarias para evitar duplicados por variaciones de escritura.\n"
-        "- Caché de datos para reducir carga de CPU y mejorar tiempos de respuesta."
+    st.subheader("Tipo de contrato")
+    by_type = top_table(df, "tipoContrato", n=12)
+    fig = px.pie(by_type, names="tipoContrato", values="importe_base", hole=0.55)
+    fig.update_traces(
+        marker=dict(colors=[GREEN, GREEN_DARK, GOLD, "#78B98A", "#A7D8B0", "#51685B"]),
+        textinfo="percent+label",
+        hovertemplate="%{label}<br>%{value:,.2f} EUR<extra></extra>",
     )
+    fig.update_layout(
+        height=420,
+        margin=dict(l=8, r=8, t=20, b=8),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=INK),
+        showlegend=False,
+    )
+    st.plotly_chart(fig, width="stretch")
 
-    st.markdown("### Fuentes oficiales")
-    st.markdown(f"- Buscador oficial Junta de Andalucía: [abrir enlace]({OFFICIAL_SEARCH_URL})")
-    st.markdown(f"- Portal de perfiles y licitaciones: [abrir enlace]({OFFICIAL_PORTAL_URL})")
+    detail_grid(df, "dashboard_detail_grid")
+
+with tab_entities:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Organos de contratacion")
+        organs = top_table(df, "perfilContratante", n=15)
+        st.plotly_chart(bar_chart(organs, "importe_base", "perfilContratante", color=GREEN_DARK), width="stretch")
+
+    with col2:
+        st.subheader("Empresas adjudicatarias")
+        awarded = df[df["empresa"] != "Sin especificar"]
+        bidders = top_table(awarded, "empresa", n=15)
+        st.plotly_chart(bar_chart(bidders, "importe_base", "empresa", color=GOLD), width="stretch")
+
+with tab_records:
+    detail_grid(df, "records_detail_grid")
+
+csv_data = df.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig")
+st.sidebar.download_button(
+    label="Descargar seleccion (CSV)",
+    data=csv_data,
+    file_name="andalucia_publicidad_filtrado.csv",
+    mime="text/csv",
+)
+
+st.markdown("---")
+st.markdown(
+    f"""
+    <div class="source-box">
+        <strong>Aviso de transparencia.</strong>
+        Esta visualizacion procesa datos publicos con fines informativos. Los importes pueden diferir de la
+        liquidacion definitiva por redondeos, actualizaciones o correcciones en la fuente original.
+        No constituye un documento oficial. Fuente:
+        <a href="{PORTAL_URL}" target="_blank">Buscador general de licitaciones de la Junta de Andalucia</a>.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)

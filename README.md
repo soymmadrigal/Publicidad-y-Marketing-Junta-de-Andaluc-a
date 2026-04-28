@@ -1,46 +1,78 @@
-# Andalucía Transparente: Publicidad Institucional
+# Dashboard de Contratacion de Publicidad y Medios de Andalucia
 
-Aplicación en **Streamlit** para visualizar expedientes de publicidad institucional y contratación en Andalucía, con enfoque de transparencia pública.
+Aplicacion Streamlit para explorar contratos, licitaciones y adjudicaciones relacionados con publicidad, comunicacion y medios en Andalucia.
 
-## Qué incluye
+La app lee `Andalucia_cpv.csv`, muestra KPIs, evolucion anual, top localizaciones, ranking de empresas, tipo de contrato y un grid de expedientes con importes formateados como EUR y enlaces oficiales clicables.
 
-- Carga optimizada desde `Parquet` (`Andalucia_medios.parquet`).
-- Filtros por año, estado, tipo de contrato, provincia y adjudicatario.
-- KPIs y gráficos interactivos con importes en formato monetario.
-- Tabla de exploración con enlace al detalle oficial del expediente.
-- Descarga de datos filtrados en CSV.
-- Uso de columna normalizada de adjudicatario: `Adjudicatario`.
+## Contenido del proyecto
 
-## Estructura mínima recomendada (para Streamlit Cloud)
+- `app.py`: aplicacion Streamlit.
+- `Andalucia_cpv.csv`: datos normalizados usados por la app.
+- `normalizar_adjudicatarios_cpv.py`: script reproducible para limpiar nombres y NIF de adjudicatarios.
+- `requirements.txt`: dependencias necesarias.
+- `.gitignore`: excluye datasets grandes, logs, entornos locales y secretos.
 
-```text
-.streamlit/config.toml
-app.py
-requirements.txt
-Andalucia_medios.parquet
-```
+## Ejecutar en local
 
-## Ejecución local
-
-```bash
+```powershell
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
+Si usas el runtime local de Codex en este equipo:
+
+```powershell
+& 'C:\Users\mmadr\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m streamlit run app.py
+```
+
+## Actualizar / normalizar datos
+
+Si partes de un `Andalucia_cpv.csv` sin normalizar, ejecuta:
+
+```powershell
+python normalizar_adjudicatarios_cpv.py
+```
+
+El script genera columnas como `adjudicatario_normalizado`, `nif_normalizado` y claves auxiliares. Si quieres que la app use el mismo nombre de archivo, sustituye el CSV original por el resultado normalizado manteniendo el nombre `Andalucia_cpv.csv`.
+
+## Subida a GitHub
+
+1. Crea un repositorio en GitHub.
+2. Desde esta carpeta:
+
+```powershell
+git init
+git add app.py Andalucia_cpv.csv normalizar_adjudicatarios_cpv.py requirements.txt README.md .gitignore
+git commit -m "Add Andalucia contracts dashboard"
+git branch -M main
+git remote add origin https://github.com/<usuario>/<repositorio>.git
+git push -u origin main
+```
+
+No subas los CSV grandes excluidos en `.gitignore`; Streamlit Cloud solo necesita `Andalucia_cpv.csv`.
+
 ## Despliegue en Streamlit Cloud
 
-1. Sube estos 4 archivos al repositorio.
-2. En Streamlit Cloud, crea una nueva app apuntando a `app.py`.
-3. Streamlit instalará dependencias desde `requirements.txt` automáticamente.
+1. Entra en [Streamlit Community Cloud](https://streamlit.io/cloud).
+2. Selecciona el repositorio de GitHub.
+3. Configura:
+   - Branch: `main`
+   - Main file path: `app.py`
+4. Despliega.
 
-## Fuente y aviso legal
+No hacen falta secretos ni variables de entorno para esta version.
 
-Esta app es una visualización no oficial con fines informativos y de transparencia.
+## Seguridad
 
-Para datos oficiales y actualizados, consulta:
+- La app no usa credenciales, tokens ni conexiones a bases de datos.
+- No ejecuta comandos del sistema ni evalua codigo de usuario.
+- Los filtros son operaciones de pandas sobre datos locales.
+- Los enlaces clicables proceden del CSV y se muestran con `LinkColumn`.
+- `.streamlit/secrets.toml` queda excluido por `.gitignore`.
+- El HTML incrustado es estatico para estilo y disclaimer; no incorpora entrada del usuario.
 
-- Buscador oficial Junta de Andalucía:  
-  https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/pdc-front-publico/perfiles-licitaciones/buscador-general
-- Portal oficial de perfiles y licitaciones:  
-  https://www.juntadeandalucia.es/temas/contratacion-publica/perfiles-licitaciones.html
+## Fuente
 
+Los datos proceden del buscador general de licitaciones de la Junta de Andalucia:
+
+https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/pdc-front-publico/perfiles-licitaciones/buscador-general
